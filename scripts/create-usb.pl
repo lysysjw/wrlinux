@@ -45,6 +45,7 @@ my $do_unlink = 1;
 my $LOOP_DEV = "";  # If someone bails with control-c, reset the loopdevice
 my $USE_LOOP_SIZELIMIT = 1;
 my $use_efi = 0;
+my $fat_label = "wrboot";
 
 my $efi_loader = `ls -tr $progroot/bitbake_build/tmp/deploy/images/*/*.efi 2> /dev/null |tail -1`;
 chop($efi_loader);
@@ -129,6 +130,8 @@ while (@ARGV) {
 	$ask_outfile = 0;
     } elsif ($ARGV[0] =~ /--distdir=(.*)/) {
 	$distdir = $1;
+    } elsif ($ARGV[0] =~ /--fat-label=(.*)/) {
+	$fat_label = $1;
     } elsif ($ARGV[0] =~ /--initrd=(.*)/) {
 	$iso_initrd_file = $1;
     } elsif ($ARGV[0] =~  /--rootfs=(.*)/) {
@@ -408,7 +411,7 @@ sub create_iso {
 	$sz = int($sz) + 512;
 	unlink("iso_efi_partiton");
 	scriptcmd("dd if=/dev/zero of=$iso_efi_partition bs=$sz count=1024");
-	scriptcmd("mkdosfs $iso_efi_partition");
+	scriptcmd("mkdosfs -n $fat_label $iso_efi_partition");
 	my $MTOOLSRC = "$progroot/mtools.conf";
 	$ENV{'MTOOLSRC'} = $MTOOLSRC;
 	unlink($MTOOLSRC);
@@ -573,7 +576,7 @@ EOF
     print "# Create FAT 16 partition - $prtsz[0][1] - $prtsz[0][0] + 512 = $sz\n";
     $ddcmd = "dd if=/dev/zero of=$tmpinst.1 bs=$sz count=1";
     scriptcmd($ddcmd);
-    scriptcmd("mkdosfs $tmpinst.1");
+    scriptcmd("mkdosfs -n $fat_label $tmpinst.1");
     scriptcmd("syslinux $tmpinst.1");
     print "# Copying files\n";
     dos_copy("$tmpinst.1");
@@ -685,7 +688,7 @@ sub format_usb_and_copy {
 	lo_umount();
 	# Dos partition build for loopback partition 1
 	lo_mount(0);
-	scriptcmd("mkdosfs $instdev");
+	scriptcmd("mkdosfs -n $fat_label $instdev");
 	scriptcmd("syslinux $instdev");
 	dos_copy($instdev);
 	lo_umount();
@@ -699,7 +702,7 @@ sub format_usb_and_copy {
 	$ret = mount_and_copy($instdev);
 	lo_umount();
     } else {
-	scriptcmd("mkdosfs $instdev" . "1");
+	scriptcmd("mkdosfs -n $fat_label $instdev" . "1");
 	scriptcmd("syslinux $instdev" . "1");
 	dos_copy($instdev . "1");
 	scriptcmd("mke2fs -t ext$convert_ext -L wr_usb_boot $instdev" . "2");
@@ -1141,6 +1144,7 @@ Usage: $0
                    --ext2-mb overrides this
   --convert-extX=# Specify using ext2, ext3 or ext4 where # = 2, 3, or 4
   --format=<y/n>   Format the device Yes or No
+  --fat-label=<X>  Label for the FAT volume default=wrboot
   --rw             Mount target file system Read/Write after boot
   --ro             Mount target file system Read-only after boot
   --no-rm          Do not remove temporary files
