@@ -46,10 +46,33 @@ my $LOOP_DEV = "";  # If someone bails with control-c, reset the loopdevice
 my $USE_LOOP_SIZELIMIT = 1;
 my $use_efi = 0;
 
-my $efi_loader = `ls $progroot/bitbake_build/tmp/deploy/images/*/*.efi 2> /dev/null |tail -1`;
+my $efi_loader = `ls -tr $progroot/bitbake_build/tmp/deploy/images/*/*.efi 2> /dev/null |tail -1`;
 chop($efi_loader);
+
+# Check for grub 0.97 and defaults
+my $grub097 = `ls -tr  $progroot/bitbake_build/tmp/deploy/images/*/grub/*.efi 2> /dev/null |tail -1`;
+chop($grub097);
+if ($grub097 ne "") {
+    $efi_loader = $grub097;
+}
+
+# Use EFI globals
+my $efi_loader_name = $efi_loader;
+my $is_grub097 = 0;
+$efi_loader_name =~ s#.*/##;
 if ($efi_loader ne "") {
     $use_efi = 1;
+    if (!($efi_loader_name eq "bootia32.efi" || $efi_loader_name eq "bootx64.efi")) {
+	if (system("file $efi_loader 2> /dev/null |egrep -e 'PE32\\+' > /dev/null") == 0) {
+	    $efi_loader_name = "bootx64.efi";
+	} else {
+	    $efi_loader_name = "bootia32.efi";
+	}
+    }
+    my $ret = system("strings $efi_loader |grep \"GRUB 0.97\" > /dev/null");
+    if (!$ret) {
+	$is_grub097 = 1;
+    }
 }
 
 # Ask defaults
@@ -336,15 +359,17 @@ exit 0;
 sub create_startup_nsh {
     if (!(-f "$progroot/startup.nsh")) {
 	open(NSH, ">$progroot/startup.nsh");
-	my $loader = $efi_loader;
-	$loader =~ s/.*\///;
-	print NSH "$loader\n";
+	print NSH "$efi_loader_name\n";
 	close(NSH);
 	chown($l_uid, -1, "$progroot/startup.nsh");
     }
     my $gcfg = "$progroot/grub.cfg";
     if (!(-f $gcfg)) {
-	system("cp $iso_cfg_dir/grub.cfg $gcfg");
+	if ($is_grub097) {
+	    system("cp $iso_cfg_dir/grub097.cfg $gcfg");
+	} else {
+	    system("cp $iso_cfg_dir/grub.cfg $gcfg");
+	}
 	chown($l_uid, -1, $gcfg);
     }
 }
@@ -365,9 +390,14 @@ sub create_iso {
 	my $e = "efi_partition";
 	scriptcmd("rm -rf $e");
 	scriptcmd("mkdir -p $e/EFI/BOOT");
-	scriptcmd("cp $efi_loader $e/EFI/BOOT");
+	scriptcmd("cp $efi_loader $e/EFI/BOOT/$efi_loader_name");
 	scriptcmd("./scripts/fakestart.sh mkdir -p $distdir/EFI/BOOT");
-	scriptcmd("./scripts/fakestart.sh cp grub.cfg $distdir/EFI/BOOT/grub.cfg");
+	if ($is_grub097) {
+	    scriptcmd("mkdir -p $e/boot/grub");
+	    scriptcmd("./scripts/fakestart.sh cp grub.cfg $distdir/boot/grub/grub.conf");
+	} else {
+	    scriptcmd("./scripts/fakestart.sh cp grub.cfg $distdir/EFI/BOOT/grub.cfg");
+	}
 	if ($use_iso) {
 	    scriptcmd("perl -p -i -e 's/wr_usb_boot/oe_iso_boot/; s# /vmlinuz# /boot/isolinux/vmlinuz#; s# /initrd# /boot/isolinux/initrd#' $distdir/EFI/BOOT/grub.cfg");
 	}
@@ -713,7 +743,13 @@ sub dos_copy {
 	scriptcmd("mcopy -o $progroot/startup.nsh m:", 0);
 	scriptcmd("mmd m:/EFI", 0);
 	scriptcmd("mmd m:/EFI/BOOT", 0);
-	scriptcmd("mcopy -o $efi_loader grub.cfg m:/EFI/BOOT", 0);
+	scriptcmd("mcopy -o $efi_loader m:/EFI/BOOT/$efi_loader_name", 0);
+	if ($is_grub097) {
+	    scriptcmd("mmd m:/boot/grub", 0);
+	    scriptcmd("mcopy -o grub.cfg m:/boot/grub/grub.conf", 0);
+	} else {
+	    scriptcmd("mcopy -o grub.cfg m:/EFI/BOOT", 0);
+	}
     }
     unlink($MTOOLSRC);
 }
