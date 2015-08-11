@@ -63,6 +63,16 @@ my $is_grub097 = 0;
 $efi_loader_name =~ s#.*/##;
 if ($efi_loader ne "") {
     $use_efi = 1;
+} else {
+     # this is used under SDK environment
+     $efi_loader = `ls $progroot/export/*.efi 2> /dev/null |tail -1`;
+     chop($efi_loader);
+     if ($efi_loader ne "") {
+         $use_efi = 1
+     }
+}
+
+if ( $use_efi == 1 ) {
     if (!($efi_loader_name eq "bootia32.efi" || $efi_loader_name eq "bootx64.efi")) {
 	if (system("file $efi_loader 2> /dev/null |egrep -e 'PE32\\+' > /dev/null") == 0) {
 	    $efi_loader_name = "bootx64.efi";
