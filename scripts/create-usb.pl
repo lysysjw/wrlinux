@@ -57,20 +57,21 @@ if ($grub097 ne "") {
     $efi_loader = $grub097;
 }
 
-# Use EFI globals
-my $efi_loader_name = $efi_loader;
-my $is_grub097 = 0;
-$efi_loader_name =~ s#.*/##;
 if ($efi_loader ne "") {
     $use_efi = 1;
 } else {
      # this is used under SDK environment
-     $efi_loader = `ls $progroot/export/*.efi 2> /dev/null |tail -1`;
+     $efi_loader = `ls -tr $progroot/export/*.efi 2> /dev/null |tail -1`;
      chop($efi_loader);
      if ($efi_loader ne "") {
          $use_efi = 1
      }
 }
+
+# Use EFI globals
+my $is_grub097 = 0;
+my $efi_loader_name = $efi_loader;
+$efi_loader_name =~ s#.*/##;
 
 if ( $use_efi == 1 ) {
     if (!($efi_loader_name eq "bootia32.efi" || $efi_loader_name eq "bootx64.efi")) {
